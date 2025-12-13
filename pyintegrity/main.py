@@ -5,6 +5,7 @@ import sys
 import logging
 
 from . import adb
+from . import pif
 from . import activity
 
 # This logger is already configured by the entrypoint script
@@ -37,6 +38,8 @@ def create_parser():
         dest='command', required=True, help='Available commands')
 
     # Delegate parser setup to each module
+    pif.setup_pif_parser(subparsers.add_parser(
+        'pif', help='Manage PlayIntegrityFix (pif.json).'))
     activity.setup_activity_parser(subparsers.add_parser(
         'activity', help='Manage device activity.'))
 

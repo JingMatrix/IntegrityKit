@@ -26,9 +26,11 @@ Your device must have the following modules installed and enabled (via Magisk, K
 
 ## Usage
 
-Ensure your Android device is connected to your computer with ADB debugging enabled and authorized.
+Ensure your Android device is connected to your computer with ADB debugging enabled and authorized. For more detailed logging on any command, add the global `--debug` flag.
 
-The primary command currently available is `activity reset`. This command automates the entire process of resetting the device's integrity activity state.
+### `activity` Command
+
+The `activity reset` command automates the entire process of resetting the device's integrity activity state.
 
 **To run the command (with a soft reboot):**
 ```sh
@@ -40,20 +42,62 @@ python integritykit.py activity reset
 python integritykit.py activity reset --reboot
 ```
 
-For more detailed logging, use the `--debug` flag:
+### `pif` Command Suite
+
+The `pif` command provides a full suite of tools to manage device profiles for PlayIntegrityFix using a local cache.
+
+#### Recommended PIF Workflow
+
+Here is the recommended, multi-step workflow for managing your `pif.json` profile:
+
+**Step 1: Fetch and cache the latest device profiles**
+This downloads all available profiles from Google's servers and saves them to a local JSON file.
+
 ```sh
-python integritykit.py --debug activity reset
+python integritykit.py pif fetch
 ```
 
-## Features
+**Step 2: List the cached profiles to see your options**
+Displays a colorized table of the profiles you just downloaded.
+```sh
+python integritykit.py pif list
+```
 
-#### Current Features
-*   **Activity Reset (`activity reset`)**:
-    *   Completely reinstalls the Google Play Store package.
-    *   Executes the `BetterKnownInstalled` module script to patch `packages.xml`, making all apps appear as if they were installed by the Play Store.
-    *   Performs a fast, soft reboot (`killall system_server`) to apply the changes in seconds.
+Example output:
+```
+--- Device Profiles in Cache (/home/user/.config/integritykit/profiles.json) ---
+Model                     Product ID                Security Patch
+-------------------------------------------------------------------
+Pixel 6                   oriole_beta               2025-09-05
+Pixel 6 Pro               raven_beta                2025-09-05
+Pixel 6a                  bluejay_beta              2025-09-05
+Pixel 7                   panther_beta              2025-10-05
+Pixel 7 Pro               cheetah_beta              2025-10-05
+```
 
-#### Planned Features
+**Step 3: Choose and apply a profile to your device**
+Select a profile from the list using its `Product ID`.
+```sh
+python integritykit.py pif apply --product lynx_beta
+```
+Or, to apply a random profile from the cache:
+```sh
+python integritykit.py pif apply --random
+```
+
+**Step 4: Force the changes to take effect**
+This kills the necessary GMS process so it reloads your new `pif.json`.
+```sh
+python integritykit.py pif kill-gms
+```
+
+#### All-in-One `apply` Command
+For convenience, you can combine fetching, applying, and killing the GMS process into a single command:
+```sh
+# Fetch latest profiles, apply a random one, and kill GMS all at once
+python integritykit.py pif apply --random --update-cache --kill-gms
+```
+
+## Planned Features
 The following features are planned for future releases:
-*   **PlayIntegrityFix Management**: A `pif` subcommand to fetch the latest device profiles, generate `pif.json`, and apply the configuration.
 *   **TEESimulator Management**: A `tee` subcommand to view, manage, and update the configuration files for TEESimulator (`keybox.xml`, `target.txt`, etc.) directly from the command line.
