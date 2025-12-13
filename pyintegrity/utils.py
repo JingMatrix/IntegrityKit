@@ -1,11 +1,27 @@
 # pyintegrity/utils.py
 
 import logging
+import os
 import sys
 try:
     import colorlog
 except ImportError:
     colorlog = None
+
+
+class Colors:
+    """A simple class to hold ANSI color codes for printing."""
+    # Check if stdout is a terminal, disable colors if not (e.g., redirecting to a file)
+    _is_tty = sys.stdout.isatty()
+
+    HEADER = '\033[95m' if _is_tty else ''   # Light Magenta
+    BLUE = '\033[94m' if _is_tty else ''      # Blue
+    CYAN = '\033[96m' if _is_tty else ''      # Cyan
+    GREEN = '\033[92m' if _is_tty else ''     # Green
+    WARNING = '\033[93m' if _is_tty else ''  # Yellow
+    FAIL = '\033[91m' if _is_tty else ''      # Red
+    ENDC = '\033[0m' if _is_tty else ''       # End Color (reset)
+    BOLD = '\033[1m' if _is_tty else ''       # Bold
 
 
 def setup_logging(debug=False):
@@ -46,3 +62,19 @@ def setup_logging(debug=False):
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     logging.debug("Debug mode enabled. Verbose logging is active.")
+
+
+def get_cache_dir():
+    """
+    Returns the appropriate user-level cache directory for the current OS.
+    """
+    if sys.platform == "win32":
+        # C:\Users\<user>\AppData\Roaming\IntegrityKit
+        path = os.path.join(os.environ.get("APPDATA", ""), "IntegrityKit")
+    else:
+        # ~/.config/integritykit
+        path = os.path.join(os.path.expanduser("~"), ".config", "integritykit")
+
+    # Ensure the directory exists
+    os.makedirs(path, exist_ok=True)
+    return path
