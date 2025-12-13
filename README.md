@@ -22,7 +22,6 @@ Your device must have the following modules installed and enabled (via Magisk, K
 1.  [NeoZygisk](https://github.com/JingMatrix/NeoZygisk)
 2.  [PlayIntegrityFix](https://github.com/JingMatrix/PlayIntegrityFix)
 3.  [TEESimulator](https://github.com/JingMatrix/TEESimulator)
-4.  [BetterKnownInstalled](https://github.com/Pixel-Props/BetterKnownInstalled)
 
 ## Usage
 
@@ -31,15 +30,8 @@ Ensure your Android device is connected to your computer with ADB debugging enab
 ### `activity` Command
 
 The `activity reset` command automates the entire process of resetting the device's integrity activity state.
-
-**To run the command (with a soft reboot):**
 ```sh
 python integritykit.py activity reset
-```
-
-**To run the command with a full system reboot instead:**
-```sh
-python integritykit.py activity reset --reboot
 ```
 
 ### `pif` Command Suite
