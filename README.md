@@ -68,10 +68,11 @@ Example output:
 --- Device Profiles in Cache (/home/user/.config/integritykit/profiles.json) ---
 Model                     Product ID                Security Patch
 -------------------------------------------------------------------
-Pixel 8 Pro               husky_beta                2025-11-05
-Pixel 8                   shiba_beta                2025-11-05
-Pixel Fold                felix_beta                2025-11-05
-Pixel 7a                  lynx_beta                 2025-10-05
+Pixel 6                   oriole_beta               2025-09-05
+Pixel 6 Pro               raven_beta                2025-09-05
+Pixel 6a                  bluejay_beta              2025-09-05
+Pixel 7                   panther_beta              2025-10-05
+Pixel 7 Pro               cheetah_beta              2025-10-05
 ```
 
 **Step 3: Choose and apply a profile to your device**
