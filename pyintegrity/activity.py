@@ -2,7 +2,9 @@
 
 import logging
 import os
+import random
 import tempfile
+import string
 from . import adb
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,16 @@ def handle_activity_reset(args):
     logger.info("Starting full activity reset process...")
 
     try:
+
+        serial = ''.join(random.choices(
+            string.ascii_uppercase + string.digits, k=10))
+
+        logger.info(f"Setting serial number to: {serial}")
+        adb.run_adb_command(['shell', 'su', '-c',
+                             f'resetprop ro.serialno {serial}'])
+        adb.run_adb_command(['shell', 'su', '-c',
+                             f'resetprop ro.boot.serialno {serial}'])
+
         # --- Step 1: Reinstall the Google Play Store ---
         logger.info(f"--- Step 1/3: Reinstalling '{PLAY_STORE_PACKAGE}' ---")
 
