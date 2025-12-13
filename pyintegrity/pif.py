@@ -34,7 +34,7 @@ def setup_pif_parser(parser):
     parser_fetch = pif_subparsers.add_parser(
         'fetch', help='Download device profiles from Google and save them to the cache.')
     parser_fetch.add_argument(
-        '--output', help=f"Save cache to a custom file path (default: {DEFAULT_CACHE_FILE}).")
+        '--cache-file', help=f"Save cache to a custom file path (default: {DEFAULT_CACHE_FILE}).")
     # Note: --android-version and --type are not implemented yet, but are good future additions
     parser_fetch.set_defaults(func=handle_fetch)
 
@@ -72,43 +72,7 @@ def setup_pif_parser(parser):
 def handle_fetch(args):
     """Logic for the 'pif fetch' command."""
     cache_path = args.output or DEFAULT_CACHE_FILE
-    logger.info(
-        f"Starting to fetch profiles. They will be saved to: {cache_path}")
-
-    try:
-        devices = _get_latest_profiles()
-        profiles = []
-        total = len(devices)
-
-        for i, dev in enumerate(devices):
-            logger.info(
-                f"Fetching fingerprint for {dev['model']} ({i+1}/{total})...")
-            try:
-                fingerprint, patch = _get_fingerprint_from_ota(dev['ota_url'])
-                profiles.append({
-                    "model": dev['model'],
-                    "product": dev['product'],
-                    "fingerprint": fingerprint,
-                    "security_patch": patch
-                })
-            except RuntimeError as e:
-                logger.warning(
-                    f"Could not fetch metadata for {dev['product']}. Skipping. Reason: {e}")
-
-        if not profiles:
-            logger.error(
-                "Failed to fetch any valid profiles. The cache will not be updated.")
-            return
-
-        _save_cache(cache_path, profiles)
-        logger.info(
-            f"Successfully saved {len(profiles)} device profiles to the cache.")
-
-    except (requests.RequestException, RuntimeError) as e:
-        logger.error(f"Failed during fetch operation: {e}")
-    except Exception as e:
-        is_debug = logging.getLogger().isEnabledFor(logging.DEBUG)
-        logger.error(f"An unexpected error occurred: {e}", exc_info=is_debug)
+    _fetch_and_save_profiles(cache_path)
 
 
 def handle_list(args):
@@ -141,13 +105,14 @@ def handle_list(args):
 
 def handle_apply(args):
     """Logic for the 'pif apply' command."""
+    cache_path = args.cache_file or DEFAULT_CACHE_FILE
+
     if args.update_cache:
         logger.info(
             "--- --update-cache flag detected. Running fetch first... ---")
-        handle_fetch(args)
+        _fetch_and_save_profiles(cache_path)
         logger.info("--- Fetch complete. Proceeding with apply... ---")
 
-    cache_path = args.cache_file or DEFAULT_CACHE_FILE
     profiles = _load_cache(cache_path)
     if not profiles:
         return
@@ -204,9 +169,45 @@ def handle_kill_gms(args):
 
 # --- Internal Helper Functions ---
 
-def _get_cache_path(args):
-    """Determines the correct cache path from args or default."""
-    return getattr(args, 'cache_file', None) or args.output or DEFAULT_CACHE_FILE
+def _fetch_and_save_profiles(cache_path):
+    """Worker function to fetch profiles and save them to a specified path."""
+    logger.info(
+        f"Starting to fetch profiles. They will be saved to: {cache_path}")
+
+    try:
+        devices = _get_latest_profiles()
+        profiles = []
+        total = len(devices)
+
+        for i, dev in enumerate(devices):
+            logger.info(
+                f"Fetching fingerprint for {dev['model']} ({i+1}/{total})...")
+            try:
+                fingerprint, patch = _get_fingerprint_from_ota(dev['ota_url'])
+                profiles.append({
+                    "model": dev['model'],
+                    "product": dev['product'],
+                    "fingerprint": fingerprint,
+                    "security_patch": patch
+                })
+            except RuntimeError as e:
+                logger.warning(
+                    f"Could not fetch metadata for {dev['product']}. Skipping. Reason: {e}")
+
+        if not profiles:
+            logger.error(
+                "Failed to fetch any valid profiles. The cache will not be updated.")
+            return
+
+        _save_cache(cache_path, profiles)
+        logger.info(
+            f"Successfully saved {len(profiles)} device profiles to the cache.")
+
+    except (requests.RequestException, RuntimeError) as e:
+        logger.error(f"Failed during fetch operation: {e}")
+    except Exception as e:
+        is_debug = logging.getLogger().isEnabledFor(logging.DEBUG)
+        logger.error(f"An unexpected error occurred: {e}", exc_info=is_debug)
 
 
 def _load_cache(path):
