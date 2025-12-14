@@ -20,6 +20,7 @@ class Colors:
     GREEN = '\033[92m' if _is_tty else ''     # Green
     WARNING = '\033[93m' if _is_tty else ''  # Yellow
     FAIL = '\033[91m' if _is_tty else ''      # Red
+    GREY = '\033[90m' if _is_tty else ''      # Grey
     ENDC = '\033[0m' if _is_tty else ''       # End Color (reset)
     BOLD = '\033[1m' if _is_tty else ''       # Bold
 

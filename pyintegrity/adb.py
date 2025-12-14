@@ -1,7 +1,9 @@
 # pyintegrity/adb.py
 
 import logging
+import random
 import subprocess
+import time
 import tempfile
 import os
 
@@ -157,3 +159,42 @@ def transfer_and_clean(local_file_path, final_destination):
 
     # The 'mv' command already cleaned up the temp file, no need to rm.
     logger.info("File transfer complete.")
+
+
+def pull_file_as_root(remote_path, local_path):
+    """
+    Pulls a root-protected file from the device by staging it in a temporary,
+    world-readable location first. This is the most reliable method.
+    """
+    logger.info(
+        f"Pulling root-protected file '{remote_path}' to '{local_path}'...")
+    try:
+        # Generate a unique temporary path on the device
+        temp_remote_filename = f"tmp_pull_{int(time.time())}_{random.randint(1000, 9999)}"
+        temp_remote_path = f"/data/local/tmp/{temp_remote_filename}"
+
+        shell_su(f"cp {remote_path} {temp_remote_path}")
+
+        shell_su(f"chown shell:shell {temp_remote_path}")
+
+        shell_su(f"chmod 644 {temp_remote_path}")
+
+        run_adb_command(['pull', temp_remote_path, local_path])
+
+        logger.debug("Root pull successful.")
+
+    except adb.AdbError as e:
+        # Check if the error was due to the original file not existing
+        if "No such file" in e.args[0]:
+            raise FileNotFoundError(f"Remote file not found: {remote_path}")
+        else:
+            raise
+
+    finally:
+        # 4. Clean up the temporary file on the device, regardless of success
+        if 'temp_remote_path' in locals():
+            logger.debug(
+                f"Cleaning up temporary file on device: {temp_remote_path}")
+            # Use a non-checking command, as we want to clean up even if the pull failed
+            run_adb_command(
+                ['shell', 'rm', '-f', temp_remote_path], check=False)

@@ -6,6 +6,7 @@ import logging
 
 from . import adb
 from . import pif
+from . import tee
 from . import activity
 
 # This logger is already configured by the entrypoint script
@@ -42,6 +43,8 @@ def create_parser():
         'pif', help='Manage PlayIntegrityFix (pif.json).'))
     activity.setup_activity_parser(subparsers.add_parser(
         'activity', help='Manage device activity.'))
+    tee.setup_tee_parser(subparsers.add_parser(
+        'tee', help='Manage TEESimulator configurations (keybox, target, patch).'))
 
     return parser
 
