@@ -3,10 +3,10 @@
 import logging
 import re
 from . import adb, file_editor
+from .constants import *
 from .utils import Colors
 
 logger = logging.getLogger(__name__)
-PATCH_FILE_PATH = "/data/adb/tricky_store/security_patch.txt"
 
 
 def setup_patch_parser(parser):

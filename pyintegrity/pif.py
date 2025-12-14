@@ -7,8 +7,8 @@ import random
 import tempfile
 import os
 import re
-from . import adb
-from . import utils
+from . import adb, utils
+from .constants import *
 from .utils import Colors
 
 try:
@@ -17,10 +17,6 @@ except ImportError:
     BeautifulSoup = None
 
 logger = logging.getLogger(__name__)
-
-# --- Constants ---
-DROIDGUARD_PROCESS = "com.google.android.gms.unstable"
-DEFAULT_CACHE_FILE = os.path.join(utils.get_cache_dir(), "profiles.json")
 
 
 # --- Cache-Centric Command Structure ---

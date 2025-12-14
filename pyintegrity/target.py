@@ -3,10 +3,10 @@
 import logging
 import re
 from . import adb, file_editor
+from .constants import *
 from .utils import Colors
 
 logger = logging.getLogger(__name__)
-TARGET_FILE_PATH = "/data/adb/tricky_store/target.txt"
 
 
 def setup_target_parser(parser):
@@ -18,7 +18,7 @@ def setup_target_parser(parser):
         '--add', metavar='PACKAGE', help='Add or update a package in target.txt.')
     target_group.add_argument(
         '--remove', metavar='PACKAGE', help='Remove a package from target.txt.')
-    parser.add_argument('--mode', choices=['auto', 'generate', 'hack'],
+    parser.add_argument('--mode', choices=['auto', 'generate', 'patch'],
                         default='auto', help="Mode for the '--add' action.")
     parser.add_argument(
         '--keybox', help="Specify which keybox section to add the package to (e.g., aosp_keybox.xml).")
@@ -98,7 +98,7 @@ def _add_package(content, package_name, mode, keybox_name=None):
                 f"Target keybox '{keybox_name}' does not exist on the device. Aborting.")
         logger.info("Keybox found.")
 
-    mode_map = {'generate': '!', 'hack': '?', 'auto': ''}
+    mode_map = {'generate': '!', 'patch': '?', 'auto': ''}
     new_line = f"{package_name}{mode_map[mode]}"
 
     # First, remove any existing instance of the package to avoid duplicates

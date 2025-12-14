@@ -10,15 +10,10 @@ from cryptography import x509
 import xml.etree.ElementTree as ET
 import importlib.resources
 from . import adb, utils
+from .constants import *
 from .utils import Colors
 
 logger = logging.getLogger(__name__)
-
-# --- Constants ---
-TEE_BASE_DIR = "/data/adb/tricky_store"
-KEYBOX_CACHE_DIR = os.path.join(utils.get_cache_dir(), "keyboxes")
-KEYBOX_BACKUP_DIR = os.path.join(KEYBOX_CACHE_DIR, "backup")
-CRL_URL = 'https://android.googleapis.com/attestation/status'
 
 # --- Main Parser Setup ---
 

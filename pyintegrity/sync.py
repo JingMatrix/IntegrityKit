@@ -3,13 +3,11 @@
 import logging
 import os
 from . import adb, utils
+from .constants import *
 from .utils import Colors
 
 logger = logging.getLogger(__name__)
 
-# --- Constants ---
-TEE_BASE_DIR = "/data/adb/tricky_store"
-SYNC_DIR = os.path.join(utils.get_cache_dir(), "device_configs")
 FILES_TO_SYNC = ["target.txt", "security_patch.txt"]
 
 

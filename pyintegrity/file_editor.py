@@ -1,6 +1,9 @@
 # pyintegrity/file_editor.py
 
 import logging
+import tempfile
+import os
+from . import adb
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +29,13 @@ def modify_remote_text_file(remote_path, modification_function, *args, **kwargs)
         try:
             # 1. Pull the file
             logger.info(f"Pulling remote file: {remote_path}")
-            adb.pull_file(remote_path, local_path)
+            adb.pull_file_as_root(remote_path, local_path)
+
             with open(local_path, 'r', encoding='utf-8') as f:
                 original_content = f.read()
 
             logger.debug("Original content:\n" + original_content)
+
         except adb.AdbError:
             logger.info(
                 "Remote file does not exist. Starting with empty content.")
