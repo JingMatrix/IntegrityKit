@@ -90,6 +90,62 @@ For convenience, you can combine fetching, applying, and killing the GMS process
 python integritykit.py pif apply --random --update-cache --kill-gms
 ```
 
-## Planned Features
-The following features are planned for future releases:
-*   **TEESimulator Management**: A `tee` subcommand to view, manage, and update the configuration files for TEESimulator (`keybox.xml`, `target.txt`, etc.) directly from the command line.
+### `tee` Command Suite
+
+This suite provides comprehensive tools to manage all `TEESimulator` configuration files.
+
+#### Syncing Configs for Manual Editing (`tee sync`)
+This is the recommended workflow if you prefer to edit `target.txt` and `security_patch.txt` manually.
+
+```sh
+# 1. Pull the current configs from your device to a local directory
+python integritykit.py tee sync --pull
+
+# The tool will print the location (e.g., ~/.config/integritykit/device_configs/).
+# 2. Edit the files in that directory with your favorite text editor.
+
+# 3. Push your changes back to the device
+python integritykit.py tee sync --push
+```
+
+#### Keybox Management (`tee keybox`)
+Manage hardware-backed keyboxes through a local cache.
+
+**Recommended Keybox Workflow:**
+```sh
+# 1. Verify and import valid keyboxes from a local directory into the cache.
+# The tool will check them against Google's CRL and name them by their serial number.
+python integritykit.py tee keybox --import /path/to/your/keyboxes/
+
+# 2. List the keyboxes now available in your local cache
+python integritykit.py tee keybox --list-local
+
+# 3. Push a keybox from your cache to the device.
+# This command backs up the existing keybox.xml on the device before replacing it.
+python integritykit.py tee keybox --push <serial_number>.xml --as keybox.xml
+
+# Or, push the built-in AOSP (software) keybox
+python integritykit.py tee keybox --push-aosp --as aosp_keybox.xml
+```
+
+#### In-Place Config Modification (`tee target` & `tee patch`)
+Modify `target.txt` and `security_patch.txt` directly from the command line.
+
+**`target.txt` Examples:**
+```sh
+# Add a rule for an app, placing it under the 'aosp_keybox.xml' section
+# The tool will first check if 'aosp_keybox.xml' exists on the device.
+python integritykit.py tee target --add com.example.app --mode generate --keybox aosp_keybox.xml
+
+# Remove the rule for an app
+python integritykit.py tee target --remove com.example.app
+```
+
+**`security_patch.txt` Examples:**
+```sh
+# Set a global value for the system patch level
+python integritykit.py tee patch --set-global --key system --value 2025-10-05
+
+# Set a package-specific override
+python integritykit.py tee patch --set-package com.google.android.gms --key all --value today
+```
