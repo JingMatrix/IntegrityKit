@@ -15,65 +15,169 @@ from .utils import Colors
 
 logger = logging.getLogger(__name__)
 
-# --- Main Parser Setup ---
+# --- Main Parser and Subcommand Router ---
 
 
 def setup_keybox_parser(parser):
-    """Adds arguments for the 'tee keybox' command."""
+    """Adds arguments for the 'tee keybox' command and its subcommands."""
     os.makedirs(KEYBOX_CACHE_DIR, exist_ok=True)
     os.makedirs(KEYBOX_BACKUP_DIR, exist_ok=True)
 
-    keybox_group = parser.add_mutually_exclusive_group(required=True)
-    keybox_group.add_argument(
-        '--list', action='store_true', help='List keyboxes on the device.')
-    keybox_group.add_argument(
-        '--list-local', action='store_true', help='List keyboxes in the local cache.')
-    keybox_group.add_argument('--show', metavar='FILENAME',
-                              help='Show parsed details of a keybox from the device.')
-    keybox_group.add_argument('--verify', metavar='PATH',
-                              help='Verify local keybox file(s) against Google CRL.')
-    keybox_group.add_argument('--import', dest='import_path', metavar='PATH',
-                              help='Verify and import valid keyboxes into the local cache.')
-    keybox_group.add_argument(
-        '--push', metavar='LOCAL_NAME', help='Push a keybox from local cache to device.')
-    keybox_group.add_argument('--push-aosp', action='store_true',
-                              help='Push the built-in AOSP keybox to the device.')
-    parser.add_argument('--as', dest='as_filename',
-                        help='Rename file during import or specify remote name for push.')
-    parser.add_argument('--force', action='store_true',
-                        help='Force overwrite during import if a file with the same name exists.')
-    parser.set_defaults(func=handle_keybox)
+    # Create sub-parsers for each action: list, show, import, push, delete, etc.
+    subparsers = parser.add_subparsers(
+        dest='keybox_command', required=True, help='Keybox actions')
+
+    # --- List Command ---
+    parser_list = subparsers.add_parser(
+        'list', help='List keyboxes on the device or in the local cache.')
+    list_group = parser_list.add_mutually_exclusive_group(required=True)
+    list_group.add_argument('--local', action='store_true',
+                            help='List keyboxes in the local cache.')
+    list_group.add_argument('--remote', action='store_true',
+                            help='List keyboxes on the device.')
+    parser_list.set_defaults(func=handle_list)
+
+    # --- Show Command ---
+    parser_show = subparsers.add_parser(
+        'show', help='Show parsed details of a keybox from the device.')
+    parser_show.add_argument(
+        'filename', help='The name of the keybox file on the device to show.')
+    parser_show.set_defaults(func=handle_show)
+
+    # --- Verify Command ---
+    parser_verify = subparsers.add_parser(
+        'verify', help='Verify local keybox file(s) against Google CRL.')
+    parser_verify.add_argument(
+        'path', help='Path to the local keybox file or directory to verify.')
+    parser_verify.set_defaults(func=handle_verify)
+
+    # --- Import Command ---
+    parser_import = subparsers.add_parser(
+        'import', help='Verify and import valid keyboxes into the local cache.')
+    parser_import.add_argument(
+        'path', help='Path to the local keybox file or directory to import.')
+    parser_import.add_argument(
+        '--as', dest='as_filename', help='Rename the imported file. Only for single file imports.')
+    parser_import.add_argument('--force', '-f', action='store_true',
+                               help='Force overwrite if a file with the same name exists in the cache.')
+    parser_import.set_defaults(func=handle_import)
+
+    # --- Push Command ---
+    parser_push = subparsers.add_parser(
+        'push', help='Push a keybox from local cache or the built-in AOSP keybox to the device.')
+    push_group = parser_push.add_mutually_exclusive_group(required=True)
+    push_group.add_argument('--local', dest='local_name', metavar='FILENAME',
+                            help='Name of the keybox in the local cache to push.')
+    push_group.add_argument('--aosp', action='store_true',
+                            help='Push the built-in AOSP keybox.')
+    parser_push.add_argument('--as', dest='as_filename', default='keybox.xml',
+                             help='The name to give the file on the device.')
+    parser_push.set_defaults(func=handle_push)
+
+    # --- Delete Command ---
+    parser_delete = subparsers.add_parser(
+        'delete', help='Delete a keybox from the local cache or the device.')
+    parser_delete.add_argument(
+        'filename', help='The name of the keybox file to delete.')
+    delete_location_group = parser_delete.add_mutually_exclusive_group(
+        required=True)
+    delete_location_group.add_argument(
+        '--local', action='store_true', help='Delete from the local cache.')
+    delete_location_group.add_argument(
+        '--remote', action='store_true', help='Delete from the device.')
+    parser_delete.add_argument('--force', '-f', action='store_true',
+                               help='Bypass confirmation and delete immediately.')
+    parser_delete.set_defaults(func=handle_delete)
 
 
-# --- Keybox Command Handler and Helpers ---
+# --- Command Handlers (dispatchers to worker functions) ---
 
-def handle_keybox(args):
-    """Main handler for all 'tee keybox' commands."""
+def _run_handler(func, *args, **kwargs):
+    """A simple wrapper to catch and log common exceptions."""
     try:
-        if args.list:
-            _list_remote_keyboxes()
-        elif args.list_local:
-            _list_local_keyboxes()
-        elif args.show:
-            _show_remote_keybox(args.show)
-        elif args.verify:
-            if not x509:
-                raise ImportError(
-                    "Please install 'cryptography' (`pip install cryptography`) to verify keyboxes.")
-            _verify_local_keyboxes(
-                args.verify, import_valid=False, as_filename=None, force_overwrite=False)
-        elif args.import_path:
-            if not x509:
-                raise ImportError(
-                    "Please install 'cryptography' to import keyboxes.")
-            _verify_local_keyboxes(args.import_path, import_valid=True, as_filename=args.as_filename,
-                                   force_overwrite=args.force)
-        elif args.push:
-            _push_keybox(args.push, args.as_filename)
-        elif args.push_aosp:
-            _push_aosp_keybox(args.as_filename)
+        func(*args, **kwargs)
     except (adb.AdbError, RuntimeError, FileNotFoundError) as e:
         logger.error(f"Operation failed: {e}")
+
+
+def handle_list(args):
+    _run_handler(_list_local_keyboxes if args.local else _list_remote_keyboxes)
+
+
+def handle_show(args):
+    _run_handler(_show_remote_keybox, args.filename)
+
+
+def handle_verify(args):
+    if not x509:
+        raise ImportError(
+            "Please install 'cryptography' (`pip install cryptography`) to use this feature.")
+    _run_handler(_verify_local_keyboxes, path=args.path, import_valid=False)
+
+
+def handle_import(args):
+    if not x509:
+        raise ImportError("Please install 'cryptography' to use this feature.")
+    _run_handler(_verify_local_keyboxes, path=args.path, import_valid=True,
+                 as_filename=args.as_filename, force_overwrite=args.force)
+
+
+def handle_push(args):
+    if args.aosp:
+        _run_handler(_push_aosp_keybox, args.as_filename)
+    else:
+        _run_handler(_push_keybox, args.local_name, args.as_filename)
+
+
+def handle_delete(args):
+    """Handles the logic for the 'delete' command with confirmation."""
+    target_type = "local cache" if args.local else "device"
+
+    if not args.force:
+        try:
+            confirm = input(
+                f"{Colors.WARNING}Are you sure you want to permanently delete '{args.filename}' from the {target_type}?{Colors.ENDC} [y/N]: ")
+            if confirm.lower() != 'y':
+                logger.info("Aborted by user.")
+                return
+        except (KeyboardInterrupt, EOFError):
+            logger.info("\nAborted by user.")
+            return
+
+    if args.local:
+        _run_handler(_delete_local_keybox, args.filename)
+    else:
+        _run_handler(_delete_remote_keybox, args.filename)
+
+
+def _delete_local_keybox(filename):
+    """Deletes a keybox file from the local cache."""
+    logger.info(f"Deleting '{filename}' from local cache...")
+    local_path = os.path.join(KEYBOX_CACHE_DIR, filename)
+    if not os.path.exists(local_path):
+        raise FileNotFoundError(
+            f"Keybox '{filename}' does not exist in the local cache.")
+
+    os.remove(local_path)
+    logger.info(
+        f"{Colors.GREEN}Successfully deleted '{filename}' from the local cache.{Colors.ENDC}")
+
+
+def _delete_remote_keybox(filename):
+    """Deletes a keybox file from the device."""
+    logger.info(f"Deleting '{filename}' from the device...")
+    remote_path = f"{TEE_BASE_DIR}/{filename}"
+
+    # First check if the file exists to provide a better error message
+    try:
+        adb.shell_su(f"[ -f \"{remote_path}\" ]")
+    except adb.AdbError:
+        raise FileNotFoundError(
+            f"Keybox '{filename}' does not exist on the device.")
+
+    adb.shell_su(f"rm -f \"{remote_path}\"")
+    logger.info(
+        f"{Colors.GREEN}Successfully deleted '{filename}' from the device.{Colors.ENDC}")
 
 
 def _list_remote_keyboxes():
@@ -329,7 +433,7 @@ def _push_aosp_keybox(remote_name):
     try:
         # This is the correct, robust way to access package data
         with importlib.resources.path('pyintegrity.resources', 'keybox_aosp.xml') as aosp_path:
-            _backup_and_push(aosp_path, remote_name)
+            _backup_and_push(str(aosp_path), remote_name)
             logger.info(
                 f"Successfully pushed AOSP keybox to device as '{remote_name}'.")
     except FileNotFoundError:
@@ -348,7 +452,7 @@ def _backup_and_push(local_path_to_push, remote_name):
         logger.info(
             f"Backing up remote '{remote_name}' to '{local_backup_path}'...")
         adb.pull_file_as_root(remote_path, local_backup_path)
-    except adb.AdbError:
+    except (adb.AdbError, FileNotFoundError):
         logger.warning(
             f"Could not back up '{remote_name}'. It may not exist on the device.")
 

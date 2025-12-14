@@ -115,17 +115,17 @@ Manage hardware-backed keyboxes through a local cache.
 ```sh
 # 1. Verify and import valid keyboxes from a local directory into the cache.
 # The tool will check them against Google's CRL and name them by their serial number.
-python integritykit.py tee keybox --import /path/to/your/keyboxes/
+python integritykit.py tee keybox import /path/to/your/keyboxes/
 
 # 2. List the keyboxes now available in your local cache
-python integritykit.py tee keybox --list-local
+python integritykit.py tee keybox list --local
 
 # 3. Push a keybox from your cache to the device.
 # This command backs up the existing keybox.xml on the device before replacing it.
-python integritykit.py tee keybox --push <serial_number>.xml --as keybox.xml
+python integritykit.py tee keybox push <serial_number>.xml --as keybox.xml
 
 # Or, push the built-in AOSP (software) keybox
-python integritykit.py tee keybox --push-aosp --as aosp_keybox.xml
+python integritykit.py tee keybox push --aosp --as keybox_aosp.xml
 ```
 
 #### In-Place Config Modification (`tee target` & `tee patch`)
@@ -135,10 +135,10 @@ Modify `target.txt` and `security_patch.txt` directly from the command line.
 ```sh
 # Add a rule for an app, placing it under the 'aosp_keybox.xml' section
 # The tool will first check if 'aosp_keybox.xml' exists on the device.
-python integritykit.py tee target --add com.example.app --mode generate --keybox aosp_keybox.xml
+python integritykit.py tee target --add org.matrix.demo --mode generate --keybox aosp_keybox.xml
 
 # Remove the rule for an app
-python integritykit.py tee target --remove com.example.app
+python integritykit.py tee target --remove org.matrix.demo
 ```
 
 **`security_patch.txt` Examples:**

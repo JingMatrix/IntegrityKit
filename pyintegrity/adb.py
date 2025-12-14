@@ -183,7 +183,7 @@ def pull_file_as_root(remote_path, local_path):
 
         logger.debug("Root pull successful.")
 
-    except adb.AdbError as e:
+    except AdbError as e:
         # Check if the error was due to the original file not existing
         if "No such file" in e.args[0]:
             raise FileNotFoundError(f"Remote file not found: {remote_path}")
