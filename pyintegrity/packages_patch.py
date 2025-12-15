@@ -5,7 +5,7 @@ import tempfile
 import os
 import xml.etree.ElementTree as ET
 import time
-from . import adb, file_editor
+from . import adb
 from .constants import *
 from .utils import Colors
 
@@ -13,166 +13,188 @@ logger = logging.getLogger(__name__)
 
 
 def setup_patch_parser(parser):
-    """Adds arguments for the 'packages patch' command."""
-    parser.add_argument(
-        '--package', help='Patch only a single specified package instead of all.')
-    parser.add_argument('--all', action='store_true',
-                             help='Force patching of ALL packages, including system apps.')
-    parser.add_argument('--origin', default='com.android.vending',
-                        help='Specify a custom installer origin (default: com.android.vending).')
-    parser.add_argument(
-        '--source',
-        default='0',
-        help='Set a specific packageSource value. 0=Unspecified, 2=Store, 3=Local File, 4=Downloaded. Default is 0.'
+    """Adds arguments for the 'packages patch' command with advanced filtering."""
+    # Group for mutually exclusive targeting flags
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
+        '--package', help='Patch only a single specified package.')
+    target_group.add_argument(
+        '--filter',
+        choices=['user', 'system', 'no-installer', 'all'],
+        help='Filter which packages to patch. Default is smart-sideloaded.'
     )
+
+    parser.add_argument('--origin', default='com.android.vending',
+                        help='Installer origin to set. Use "" or 0 to remove origin info.')
+    parser.add_argument('--source', default='0',
+                        help='packageSource to set. 0=Unspecified, 2=Store. Default is 0.')
     parser.add_argument('--no-backup', action='store_true',
-                        help='Skip creating a local backup of the original file.')
+                        help='Skip creating a local backup.')
     parser.add_argument('--apply-changes', action='store_true',
-                        help='Perform a soft reboot to apply changes immediately.')
+                        help='Perform a soft reboot to apply changes.')
     parser.add_argument('--full-reboot', action='store_true',
-                        help='Perform a full reboot instead of a soft one if --apply-changes is used.')
+                        help='Perform a full reboot if --apply-changes is used.')
     parser.set_defaults(func=handle_patch)
 
 
 def handle_patch(args):
     """Main handler for 'packages patch' command."""
     try:
-        _patch_origin_command(args.package, args.all, args.origin, args.source,
-                              args.no_backup, args.apply_changes, args.full_reboot)
+        _patch_origin_command(args)
     except (adb.AdbError, RuntimeError, FileNotFoundError) as e:
         logger.error(f"{Colors.FAIL}Operation failed: {e}{Colors.ENDC}")
 
+# --- Conductor Function ---
 
-def _patch_origin_command(target_package, patch_all, origin_package, package_source, no_backup, apply_changes, full_reboot):
-    """The main worker logic for patching package origins."""
+
+def _patch_origin_command(args):
+    """Orchestrates the patching process by calling modular helper functions."""
     logger.info("Starting package origin patching process...")
 
-    # Step 0: Pre-flight checks
-    logger.info("--- Step 0/6: Checking for required on-device binaries... ---")
-    try:
-        adb.shell_su("command -v abx2xml && command -v xml2abx")
-    except adb.AdbError:
-        raise RuntimeError(
-            "Required binaries 'abx2xml' and 'xml2abx' not found.")
+    # Pre-flight checks and backups
+    adb.shell_su("command -v abx2xml && command -v xml2abx")
+    if not args.no_backup:
+        _backup_remote_files()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Step 1: Backup
-        if not no_backup:
-            _backup_remote_files()
-
-        # Step 2: Process packages.xml
-        logger.info(
-            f"--- Step 2/6: Processing {os.path.basename(PACKAGES_XML_PATH)}... ---")
-        try:
-            local_xml_path = adb._pull_and_convert_xml(
-                PACKAGES_XML_PATH, temp_dir)
-        except FileNotFoundError:
-            raise RuntimeError(
-                f"Could not find {PACKAGES_XML_PATH}. Aborting.")
-
+        local_xml_path = adb._pull_and_convert_xml(PACKAGES_XML_PATH, temp_dir)
         tree = ET.parse(local_xml_path)
         root = tree.getroot()
 
-        origin_pkg_elem = root.find(f".//package[@name='{origin_package}']")
-        if not origin_pkg_elem:
-            raise RuntimeError(
-                f"Specified origin package '{origin_package}' not found in database.")
-        origin_uid = origin_pkg_elem.get('userId')
-        logger.info(
-            f"Found origin package '{origin_package}' with userId: {origin_uid}")
-
-        all_packages = root.findall('package')
-        packages_to_patch = []
-
-        if target_package:
-            # User specified a single package, overriding all filters
-            logger.info(f"Targeting single package: {args.package}")
-            pkg = root.find(f".//package[@name='{args.package}']")
-            if not pkg:
-                raise RuntimeError(
-                    f"Target package '{args.package}' not found.")
-            packages_to_patch.append(pkg)
-
-        elif patch_all:
-            # User wants to patch everything
-            logger.info("Targeting ALL packages as requested by --all flag.")
-            packages_to_patch = all_packages
-
-        else:
-            # Default smart behavior: target only sideloaded user apps
-            logger.info(
-                "Targeting sideloaded user apps by default (use --all to override).")
-            packages_to_patch = [
-                p for p in all_packages
-                if p.get('codePath', '').startswith('/data/app') and p.get('packageSource') not in ['0', '2']
-            ]
-
+        # Get packages to modify based on filter arguments
+        packages_to_patch = _get_packages_to_patch(root, args)
         if not packages_to_patch:
-            raise RuntimeError(f"Target package '{target_package}' not found.")
+            logger.warning(
+                "No packages matched the criteria for patching. No changes will be made.")
+            return
 
+        logger.info(f"Fouand {len(packages_to_patch)} package(s) to patch.")
+
+        # Determine origin UID only if we are setting an origin
+        origin_uid = None
+        if args.origin and args.origin not in ['0', '']:
+            origin_pkg_elem = root.find(f".//package[@name='{args.origin}']")
+            if not origin_pkg_elem:
+                raise RuntimeError(
+                    f"Specified origin package '{args.origin}' not found.")
+            origin_uid = origin_pkg_elem.get('userId')
+            logger.info(f"Using origin '{args.origin}' (uid: {origin_uid})")
+
+        # Modify the elements in the XML tree
         modified_count = 0
-        for pkg in packages_to_patch:
-            changed = False
-
-            attributes_to_set = {
-                'installer': origin_package,
-                'installInitiator': origin_package,
-                'installerUid': origin_uid,
-                'packageSource': package_source
-            }
-
-            attributes_to_remove = ['installOriginator']
-
-            for key, value in attributes_to_set.items():
-                if pkg.get(key) != value:
-                    pkg.set(key, value)
-                    changed = True
-
-            for key in attributes_to_remove:
-                if key in pkg.attrib:
-                    del pkg.attrib[key]
-                    changed = True
-
-            if pkg.get('isOrphaned') == 'true':
-                del pkg.attrib['isOrphaned']
-                changed = True
-            if pkg.get('installInitiatorUninstalled') == 'true':
-                del pkg.attrib['installInitiatorUninstalled']
-                changed = True
-
-            if changed:
+        for pkg_element in packages_to_patch:
+            if _modify_package_element(pkg_element, origin_uid, args):
                 modified_count += 1
 
-        logger.info(f"Patched origin for {len(packages_to_patch)} package(s).")
-        modified_packages_path = os.path.join(
-            temp_dir, "packages.modified.xml")
-        tree.write(modified_packages_path,
-                   encoding='utf-8', xml_declaration=True)
+        logger.info(f"Patched attributes for {modified_count} package(s).")
 
-        # Step 3: Clear warnings
-        logger.info(
-            f"--- Step 3/6: Preparing clean {os.path.basename(PACKAGES_WARNINGS_XML_PATH)}... ---")
-        warnings_content = "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><packages />"
-        modified_warnings_path = os.path.join(
-            temp_dir, "packages-warnings.modified.xml")
-        with open(modified_warnings_path, 'w') as f:
-            f.write(warnings_content)
+        if modified_count > 0:
+            modified_packages_path = os.path.join(
+                temp_dir, "packages.modified.xml")
+            tree.write(modified_packages_path,
+                       encoding='utf-8', xml_declaration=True)
 
-        # Steps 4 & 5: Push, convert, replace, and restore
-        _push_and_finalize(modified_packages_path, modified_warnings_path)
+            # Create clean warnings file
+            warnings_content = "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><packages />"
+            modified_warnings_path = os.path.join(
+                temp_dir, "packages-warnings.modified.xml")
+            with open(modified_warnings_path, 'w') as f:
+                f.write(warnings_content)
 
-        # Step 6: Apply changes
-        if apply_changes:
-            logger.info("--- Step 6/6: Applying changes... ---")
-            if full_reboot:
-                logger.info("Performing a full system reboot...")
-                adb.run_adb_command(['reboot'])
+            # Push, finalize, and apply changes
+            _push_and_finalize(modified_packages_path, modified_warnings_path)
+            if args.apply_changes:
+                reboot_cmd = ['reboot'] if args.full_reboot else [
+                    'shell', 'su', '-c', 'killall system_server']
+                logger.info(
+                    f"Applying changes via {'full' if args.full_reboot else 'soft'} reboot...")
+                adb.run_adb_command(reboot_cmd)
             else:
-                logger.info("Performing a soft reboot...")
-                adb.shell_su('killall system_server')
+                logger.warning(
+                    "Patching complete. A reboot is required for changes to take effect.")
         else:
-            logger.warning(
-                "Patching complete. A reboot (or 'system soft-reboot') is required for changes to take effect.")
+            logger.info("No packages required modification.")
+
+# --- Modular Helper Functions ---
+
+
+def _get_packages_to_patch(root, args):
+    """Uses filter arguments to return a list of package elements to modify."""
+    all_packages = root.findall('package')
+
+    if args.package:
+        logger.info(f"Filtering by single package: {args.package}")
+        pkg = root.find(f".//package[@name='{args.package}']")
+        return [pkg] if pkg else []
+
+    if args.filter == 'user':
+        logger.info("Filtering for ALL user-installed packages.")
+        return [p for p in all_packages if p.get('codePath', '').startswith('/data/app')]
+
+    if args.filter == 'system':
+        logger.info("Filtering for ALL system packages.")
+        return [p for p in all_packages if not p.get('codePath', '').startswith('/data/app')]
+
+    if args.filter == 'no-installer':
+        logger.info("Filtering for packages with no installer attribute.")
+        return [p for p in all_packages if p.get('installer') is None]
+
+    if args.filter == 'all':
+        logger.info("Targeting ALL packages as requested.")
+        return all_packages
+
+    # Default "smart sideloaded" filter
+    logger.info("Filtering for sideloaded user apps (default behavior).")
+    return [
+        p for p in all_packages
+        if p.get('codePath', '').startswith('/data/app')
+        and p.get('packageSource') not in ['0', '2']
+    ]
+
+
+def _modify_package_element(pkg_element, origin_uid, args):
+    """Modifies a single package element based on args. Returns True if changed."""
+    changed = False
+
+    if args.origin in [None, '0', '']:
+        # --- REMOVE ORIGIN LOGIC ---
+        attributes_to_remove = [
+            'installer', 'installInitiator', 'installerUid', 'installOriginator']
+        for key in attributes_to_remove:
+            if key in pkg_element.attrib:
+                del pkg_element.attrib[key]
+                changed = True
+        if pkg_element.get('packageSource') != '0':
+            pkg_element.set('packageSource', '0')  # Set to Unspecified
+            changed = True
+    else:
+        # --- SET ORIGIN LOGIC ---
+        attributes_to_set = {
+            'installer': args.origin,
+            'installInitiator': args.origin,
+            'installerUid': origin_uid,
+            'packageSource': args.source
+        }
+        for key, value in attributes_to_set.items():
+            if pkg_element.get(key) != value:
+                pkg_element.set(key, value)
+                changed = True
+
+    # --- SHARED CLEANUP LOGIC ---
+    if 'installOriginator' in pkg_element.attrib:
+        del pkg_element.attrib['installOriginator']
+        changed = True
+    if pkg_element.get('isOrphaned') == 'true':
+        del pkg_element.attrib['isOrphaned']
+        changed = True
+    if pkg_element.get('installInitiatorUninstalled') == 'true':
+        del pkg_element.attrib['installInitiatorUninstalled']
+        changed = True
+
+    if changed:
+        logger.debug(f"Patched: {pkg_element.get('name')}")
+
+    return changed
 
 
 def _backup_remote_files():

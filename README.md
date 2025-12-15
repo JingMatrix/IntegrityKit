@@ -66,7 +66,7 @@ python integritykit.py system soft-reboot
 python integritykit.py packages patch --package com.example.app --origin com.aurora.store
 
 # Force a patch of ALL packages on the system (including system apps)
-python integritykit.py packages patch --all
+python integritykit.py packages patch --filter all
 
 # Combine patching with an immediate soft reboot
 python integritykit.py packages patch --apply-changes
