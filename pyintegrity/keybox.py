@@ -112,7 +112,8 @@ def handle_verify(args):
     if not x509:
         raise ImportError(
             "Please install 'cryptography' (`pip install cryptography`) to use this feature.")
-    _run_handler(_verify_local_keyboxes, path=args.path, import_valid=False)
+    _run_handler(_verify_local_keyboxes, path=args.path, import_valid=False,
+                 as_filename=None, force_overwrite=None)
 
 
 def handle_import(args):
@@ -286,9 +287,24 @@ def _print_keybox_details(filename, xml_content):
 def _fetch_crl():
     """Fetches and returns the Google CRL."""
     logger.info("Fetching latest Google Certificate Revocation List (CRL)...")
+
+    # This makes the URL unique for every request, forcing caches to ignore old copies.
+    cache_bust_param = f"?v={int(time.time())}"
+    url_to_fetch = CRL_URL + cache_bust_param
+
+    # Headers to prevent intermediate caches from serving stale data
+    headers = {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
+
     try:
-        response = requests.get(CRL_URL, timeout=10)
+        response = requests.get(url_to_fetch, timeout=10, headers=headers)
         response.raise_for_status()
+        age = response.headers.get('Age', 'Not Present')
+        date = response.headers.get('Date', 'Not Present')
+        logger.debug(f"CRL Response Headers -> Age: {age}, Date: {date}")
         return response.json()
     except requests.RequestException as e:
         raise RuntimeError(f"Failed to fetch CRL from Google: {e}")
@@ -320,6 +336,9 @@ def _verify_local_keyboxes(path, import_valid, as_filename, force_overwrite):
     crl = _fetch_crl()
     if not crl or "entries" not in crl:
         raise RuntimeError("Fetched CRL is invalid or empty.")
+
+    revoked_serials_set = {sn.lower() for sn in crl["entries"]}
+    logger.info(f"Found {len(revoked_serials_set)} revoked keyboxes in CRL.")
 
     summary = {'valid': 0, 'revoked': 0, 'invalid': 0, 'imported': 0}
     for file_path in files_to_check:
@@ -371,21 +390,24 @@ def _verify_local_keyboxes(path, import_valid, as_filename, force_overwrite):
         if not is_valid_file:
             continue
 
-        # Check all found leaf serials against the CRL
-        is_revoked = any(sn in crl["entries"] for sn in leaf_serials)
+        found_revoked_serials = [
+            sn for sn in leaf_serials if sn.lower() in revoked_serials_set]
+        is_revoked = bool(found_revoked_serials)
 
         # Display results for this file
         serial_info = '\n'.join([f"  - {s}" for s in human_readable_serials])
         if is_revoked:
+            # Format the revoked serials for clear output
+            revoked_info = ', '.join(found_revoked_serials)
             logger.info(
-                f"\n{Colors.FAIL}{Colors.BOLD}[REVOKED] {filename}{Colors.ENDC}\n{serial_info}")
+                f"\n{Colors.FAIL}{Colors.BOLD}[REVOKED] {filename}{Colors.ENDC}\n{serial_info}"
+                f"\n  {Colors.FAIL}Reason: The following serial(s) are revoked: {revoked_info}{Colors.ENDC}")
             summary['revoked'] += 1
         else:
             logger.info(
                 f"\n{Colors.GREEN}{Colors.BOLD}[VALID] {filename}{Colors.ENDC}\n{serial_info}")
             summary['valid'] += 1
             if import_valid:
-                # --- NEW IMPORT NAMING LOGIC ---
                 if as_filename:
                     target_filename = as_filename if as_filename.endswith(
                         '.xml') else f"{as_filename}.xml"

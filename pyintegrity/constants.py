@@ -19,6 +19,10 @@ DEFAULT_CACHE_FILE = os.path.join(utils.get_cache_dir(), "profiles.json")
 # --- Keybox Verification ---
 CRL_URL = 'https://android.googleapis.com/attestation/status'
 
+# --- Packages Command ---
+PACKAGES_XML_PATH = "/data/system/packages.xml"
+PACKAGES_WARNINGS_XML_PATH = "/data/system/packages-warnings.xml"
+PACKAGES_BACKUP_DIR = os.path.join(utils.get_cache_dir(), "backups")
 
 __all__ = [
     'TEE_BASE_DIR',
@@ -31,4 +35,7 @@ __all__ = [
     'DROIDGUARD_PROCESS',
     'DEFAULT_CACHE_FILE',
     'CRL_URL',
+    'PACKAGES_XML_PATH',
+    'PACKAGES_WARNINGS_XML_PATH',
+    'PACKAGES_BACKUP_DIR',
 ]

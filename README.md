@@ -27,11 +27,72 @@ Your device must have the following modules installed and enabled (via Magisk, K
 
 Ensure your Android device is connected to your computer with ADB debugging enabled and authorized. For more detailed logging on any command, add the global `--debug` flag.
 
-### `activity` Command
+### `packages` Command Suite
 
-The `activity reset` command automates the entire process of resetting the device's integrity activity state.
+This is the primary suite of tools for inspecting and modifying the Android package manager database.
+
+#### Inspecting the Database (`packages info`)
+
+Before making changes, you can safely inspect the current state of your device's apps.
+
 ```sh
-python integritykit.py activity reset
+# Show a high-level summary of installers on your device
+python integritykit.py packages info --summary
+
+# List all user-installed apps that were NOT installed by the Play Store
+python integritykit.py packages info --list-packages --filter sideloaded
+
+# Get detailed installer information for a specific app
+python integritykit.py packages info --package com.example.app
+```
+
+#### Patching Installer Origin (`packages patch`)
+
+This command modifies `packages.xml` to change how apps appear to be installed.
+
+**Recommended Usage (Smart Patching):**
+By default, this command intelligently finds and patches only user-installed apps that are not already correctly marked as being from the Play Store.
+```sh
+# Patch all sideloaded apps to appear as if installed by the Play Store
+python integritykit.py packages patch
+
+# After patching, apply the changes with a fast, soft reboot
+python integritykit.py system soft-reboot
+```
+
+**Power-User Options:**
+```sh
+# Patch a SINGLE package, specifying a different origin (e.g., Aurora Store)
+python integritykit.py packages patch --package com.example.app --origin com.aurora.store
+
+# Force a patch of ALL packages on the system (including system apps)
+python integritykit.py packages patch --filter all
+
+# Combine patching with an immediate soft reboot
+python integritykit.py packages patch --apply-changes
+```
+
+#### Reinstalling Packages (`packages reinstall`)
+
+This command performs a clean reinstallation of an app and automatically patches its installer origin to the Play Store.
+
+```sh
+python integritykit.py packages reinstall com.example.app
+```
+
+#### Restoring Backups (`packages restore`)
+
+The `patch` command automatically creates local backups. You can use these to revert changes if needed.
+
+```sh
+# 1. List available backups
+python integritykit.py packages restore --list
+
+# 2. Restore a specific backup from the list (with confirmation)
+python integritykit.py packages restore 1
+
+# 3. Apply the restored database with a soft reboot
+python integritykit.py system soft-reboot
 ```
 
 ### `pif` Command Suite
@@ -148,4 +209,19 @@ python integritykit.py tee patch --set-global --key system --value 2025-10-05
 
 # Set a package-specific override
 python integritykit.py tee patch --set-package com.google.android.gms --key all --value today
+```
+
+### `system` Command Suite
+
+Provides general system-level utilities.
+
+```sh
+# Perform a fast, soft reboot (restarts the Android UI)
+python integritykit.py system soft-reboot
+
+# Change the device serial number to a new random value
+python integritykit.py system serial
+
+# Set a specific serial number
+python integritykit.py system serial --set <YOUR_SERIAL>
 ```

@@ -198,3 +198,20 @@ def pull_file_as_root(remote_path, local_path):
             # Use a non-checking command, as we want to clean up even if the pull failed
             run_adb_command(
                 ['shell', 'rm', '-f', temp_remote_path], check=False)
+
+
+def _pull_and_convert_xml(remote_path, temp_dir):
+    """Helper to pull and convert a single XML file."""
+    # (Identical to the one in packages_patch.py, kept here for module independence)
+    filename = os.path.basename(remote_path)
+    local_text_path = os.path.join(temp_dir, filename)
+    temp_abx_name = f"tmp_{filename}_{random.randint(1000, 9999)}.abx"
+    temp_abx_path = f"/data/local/tmp/{temp_abx_name}"
+    temp_xml_path = temp_abx_path.replace('.abx', '.xml')
+    try:
+        shell_su(f"cp \"{remote_path}\" \"{temp_abx_path}\"")
+        shell_su(f"abx2xml \"{temp_abx_path}\" \"{temp_xml_path}\"")
+        pull_file_as_root(temp_xml_path, local_text_path)
+        return local_text_path
+    finally:
+        shell_su(f"rm -f \"{temp_abx_path}\" \"{temp_xml_path}\"")
