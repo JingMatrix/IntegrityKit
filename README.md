@@ -60,7 +60,8 @@ python integritykit.py packages patch
 python integritykit.py system soft-reboot
 ```
 
-**Power-User Options:**```sh
+**Power-User Options:**
+```sh
 # Patch a SINGLE package, specifying a different origin (e.g., Aurora Store)
 python integritykit.py packages patch --package com.example.app --origin com.aurora.store
 
