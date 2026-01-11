@@ -29,7 +29,7 @@ def setup_restore_parser(parser):
 
 def _get_backups():
     """Scans the backup directory and returns a sorted list of backup files."""
-    backup_pattern = os.path.join(PACKAGES_BACKUP_DIR, "packages.xml.*.abx")
+    backup_pattern = os.path.join(PACKAGES_BACKUP_DIR, "packages.xml.*.bk")
     # Use glob to find all matching files
     files = glob.glob(backup_pattern)
     # Sort files by modification time, newest first

@@ -212,10 +212,20 @@ def _modify_package_element(pkg_element, origin_uid, origin_package, package_sou
 def _backup_remote_files():
     """Pulls and stores backups of the critical package files."""
     logger.info("--- Step 1/6: Backing up original package files... ---")
+
+    try:
+        if not os.path.exists(PACKAGES_BACKUP_DIR):
+            logger.debug(
+                f"Backup directory not found. Creating '{PACKAGES_BACKUP_DIR}'...")
+            os.makedirs(PACKAGES_BACKUP_DIR)
+    except OSError as e:
+        # Catch potential race conditions or permission errors
+        raise RuntimeError(f"Failed to create backup directory: {e}")
+
     for remote_path in [PACKAGES_XML_PATH, PACKAGES_WARNINGS_XML_PATH]:
         filename = os.path.basename(remote_path)
         backup_path = os.path.join(
-            PACKAGES_BACKUP_DIR, f"{filename}.{int(time.time())}.abx")
+            PACKAGES_BACKUP_DIR, f"{filename}.{int(time.time())}.bk")
         try:
             adb.pull_file_as_root(remote_path, backup_path)
             logger.info(f"Backed up '{filename}' to '{backup_path}'")
