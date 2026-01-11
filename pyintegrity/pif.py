@@ -67,7 +67,7 @@ def setup_pif_parser(parser):
 
 def handle_fetch(args):
     """Logic for the 'pif fetch' command."""
-    cache_path = args.output or DEFAULT_CACHE_FILE
+    cache_path = args.cache_file or DEFAULT_CACHE_FILE
     _fetch_and_save_profiles(cache_path)
 
 
@@ -284,11 +284,11 @@ def _get_latest_profiles():
     sub_version_pages = [
         {'href': f"/about/versions/{latest_major_version}", 'key': (1, 0)}]
     sub_version_pages.extend({'href': a['href'], 'key': _parse_subversion_link(
-        a['href'])} for a in soup.find_all('a', href=re.compile(f'/about/versions/{latest_major_version}/.*')))
+        a['href'])} for a in soup.find_all('a', href=re.compile(f'/about/versions/{latest_major_version}/[^/]+/download-ota$')))
     sub_version_pages.sort(key=lambda x: x['key'], reverse=True)
     best_page = sub_version_pages[0]
     # Step 3: Parse OTA Page
-    ota_page_url = f"{base_url}{best_page['href']}/download-ota"
+    ota_page_url = f"{base_url}{best_page['href']}"
     logger.info(f"Fetching profiles from best build page: {ota_page_url}")
     response = requests.get(ota_page_url, timeout=15)
     if response.status_code != 200:
