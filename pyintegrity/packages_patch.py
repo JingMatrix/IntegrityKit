@@ -60,7 +60,24 @@ def _patch_packages(target_package, target_filter, origin_package, package_sourc
     """
     logger.info("Starting package origin patching process...")
 
-    adb.shell_su("command -v abx2xml && command -v xml2abx")
+    logger.info("Checking for XML/ABX conversion tools on the device...")
+    try:
+        # We run the command but don't need its output, just that it succeeds.
+        adb.shell_su("command -v abx2xml")
+        logger.debug("'abx2xml' command is available.")
+    except adb.AdbError:
+        logger.warning(
+            "'abx2xml' command not found. Reading a binary packages.xml will fail if attempted."
+        )
+
+    try:
+        adb.shell_su("command -v xml2abx")
+        logger.debug("'xml2abx' command is available.")
+    except adb.AdbError:
+        logger.warning(
+            "'xml2abx' command not found. Writing back to a binary packages.xml will fail if attempted."
+        )
+
     if not no_backup:
         _backup_remote_files()
 
