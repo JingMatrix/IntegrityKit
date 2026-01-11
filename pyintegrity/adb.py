@@ -102,7 +102,7 @@ def shell_su(command):
         str: The stdout from the command.
     """
     logger.debug(f"Executing root command: {command}")
-    result = run_adb_command(['shell', 'su', '-c', command])
+    result = run_adb_command(['shell', f"su -c '{command}'"])
     return result.stdout.strip()
 
 
