@@ -44,7 +44,7 @@ def handle_info(args):
     logger.info("--- Pulling and converting package files for analysis ---")
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
-            local_packages_xml = adb._pull_and_convert_xml(
+            local_packages_xml, _ = adb._pull_and_convert_xml(
                 PACKAGES_XML_PATH, temp_dir)
             tree = ET.parse(local_packages_xml)
             root = tree.getroot()
@@ -87,7 +87,7 @@ def _show_summary(root, temp_dir):
         print(f"  - {color}{installer}{Colors.ENDC}: {count} packages")
 
     try:
-        local_warnings_xml = adb._pull_and_convert_xml(
+        local_warnings_xml, _ = adb._pull_and_convert_xml(
             PACKAGES_WARNINGS_XML_PATH, temp_dir)
         warnings_tree = ET.parse(local_warnings_xml)
         if len(warnings_tree.getroot()) > 0:

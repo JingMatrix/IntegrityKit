@@ -201,17 +201,61 @@ def pull_file_as_root(remote_path, local_path):
 
 
 def _pull_and_convert_xml(remote_path, temp_dir):
-    """Helper to pull and convert a single XML file."""
-    # (Identical to the one in packages_patch.py, kept here for module independence)
+    """
+    Pulls a single XML file. It attempts to convert it from binary (ABX) and
+    returns a boolean indicating if the conversion happened.
+
+    Args:
+        remote_path (str): The path to the file on the Android device.
+        temp_dir (str): The local temporary directory to store the file.
+
+    Returns:
+        tuple: A tuple containing:
+            - str: The local path to the plaintext XML file.
+            - bool: True if the original file was binary (ABX), False otherwise.
+    """
     filename = os.path.basename(remote_path)
     local_text_path = os.path.join(temp_dir, filename)
-    temp_abx_name = f"tmp_{filename}_{random.randint(1000, 9999)}.abx"
-    temp_abx_path = f"/data/local/tmp/{temp_abx_name}"
-    temp_xml_path = temp_abx_path.replace('.abx', '.xml')
+
+    # Use a unique name for the temporary file on the device to avoid collisions
+    temp_device_filename = f"tmp_{filename}_{random.randint(1000, 9999)}"
+    # This will be our initial copy from the protected location
+    temp_staged_path = f"/data/local/tmp/{temp_device_filename}"
+
     try:
-        shell_su(f"cp \"{remote_path}\" \"{temp_abx_path}\"")
-        shell_su(f"abx2xml \"{temp_abx_path}\" \"{temp_xml_path}\"")
-        pull_file_as_root(temp_xml_path, local_text_path)
-        return local_text_path
+        # Copy the remote file to a temporary, accessible location on the device.
+        shell_su(f"cp \"{remote_path}\" \"{temp_staged_path}\"")
+
+        # TRY to convert the staged file from ABX to XML.
+        temp_xml_output_path = f"{temp_staged_path}_converted.xml"
+
+        try:
+            logger.debug(
+                f"Attempting to convert '{remote_path}' from binary XML...")
+            shell_su(
+                f"abx2xml \"{temp_staged_path}\" \"{temp_xml_output_path}\"")
+
+            # If conversion succeeds, pull the *converted* file.
+            pull_file_as_root(temp_xml_output_path, local_text_path)
+            # The original was binary.
+            return local_text_path, True
+
+        except AdbError as e:
+            # If the conversion fails with this specific error, it's a plaintext XML.
+            if "Invalid magic number" in e.args[0]:
+                logger.warning(
+                    f"Conversion failed for '{filename}'; assuming it's already plaintext XML."
+                )
+                # The conversion failed, so pull the *staged* file directly.
+                pull_file_as_root(temp_staged_path, local_text_path)
+                # The original was not binary.
+                return local_text_path, False
+            else:
+                # It was a different, unexpected error, so we should raise it.
+                raise
+
     finally:
-        shell_su(f"rm -f \"{temp_abx_path}\" \"{temp_xml_path}\"")
+        # Clean up all possible temporary files on the device using a glob pattern.
+        logger.debug(
+            f"Cleaning up temporary files on device matching: {temp_device_filename}*")
+        shell_su(f"rm -f \"/data/local/tmp/{temp_device_filename}*\"")

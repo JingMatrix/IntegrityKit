@@ -65,7 +65,8 @@ def _patch_packages(target_package, target_filter, origin_package, package_sourc
         _backup_remote_files()
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        local_xml_path = adb._pull_and_convert_xml(PACKAGES_XML_PATH, temp_dir)
+        local_xml_path, is_binary = adb._pull_and_convert_xml(
+            PACKAGES_XML_PATH, temp_dir)
         tree = ET.parse(local_xml_path)
         root = tree.getroot()
 
@@ -107,7 +108,8 @@ def _patch_packages(target_package, target_filter, origin_package, package_sourc
             with open(modified_warnings_path, 'w') as f:
                 f.write(warnings_content)
 
-            _push_and_finalize(modified_packages_path, modified_warnings_path)
+            _push_and_finalize(modified_packages_path,
+                               modified_warnings_path, is_binary)
 
             if apply_changes:
                 reboot_cmd = ['reboot'] if full_reboot else [
@@ -204,30 +206,62 @@ def _backup_remote_files():
             logger.warning(f"'{filename}' not on device, skipping backup.")
 
 
-def _push_and_finalize(local_packages_path, local_warnings_path):
-    """Pushes, converts, moves, and restores permissions for the package files."""
-    logger.info(
-        "--- Step 4/6: Pushing modified files and converting to binary... ---")
+def _push_and_finalize(local_packages_path, local_warnings_path, is_binary):
+    """
+    Pushes, optionally converts, moves, and restores permissions for the package files.
+
+    Args:
+        local_packages_path (str): Local path to the modified packages.xml.
+        local_warnings_path (str): Local path to the empty packages-warnings.xml.
+        is_binary (bool): If True, convert the XML files to ABX before replacing.
+    """
+    # Define temporary paths on the device
     tmp_xml_packages = "/data/local/tmp/packages.modified.xml"
     tmp_xml_warnings = "/data/local/tmp/warnings.modified.xml"
-    final_abx_packages = "/data/local/tmp/packages.final.abx"
-    final_abx_warnings = "/data/local/tmp/warnings.final.abx"
 
+    # Push the modified plaintext XML files to the device's temp directory
     adb.transfer_and_clean(local_packages_path, tmp_xml_packages)
     adb.transfer_and_clean(local_warnings_path, tmp_xml_warnings)
 
-    adb.shell_su(f"xml2abx {tmp_xml_packages} {final_abx_packages}")
-    adb.shell_su(f"xml2abx {tmp_xml_warnings} {final_abx_warnings}")
+    # These will be the final paths we move into the system directory
+    source_packages_path = tmp_xml_packages
+    source_warnings_path = tmp_xml_warnings
+
+    if is_binary:
+        logger.info(
+            "--- Step 4/6: Converting modified files back to binary... ---")
+        final_abx_packages = "/data/local/tmp/packages.final.abx"
+        final_abx_warnings = "/data/local/tmp/warnings.final.abx"
+
+        try:
+            adb.shell_su(f"xml2abx {tmp_xml_packages} {final_abx_packages}")
+            adb.shell_su(f"xml2abx {tmp_xml_warnings} {final_abx_warnings}")
+        except adb.AdbError as e:
+            if "not found" in e.args[0]:
+                raise RuntimeError(
+                    "The 'xml2abx' command was not found on the device, cannot complete patching.")
+            else:
+                raise
+
+        # The source for the final move is now the converted binary files
+        source_packages_path = final_abx_packages
+        source_warnings_path = final_abx_warnings
+    else:
+        logger.info(
+            "--- Step 4/6: Pushing modified plaintext files (no conversion needed)... ---")
 
     logger.info(
         "--- Step 5/6: Replacing files on device and restoring context... ---")
-    adb.shell_su(f"mv {final_abx_packages} {PACKAGES_XML_PATH}")
-    adb.shell_su(f"mv {final_abx_warnings} {PACKAGES_WARNINGS_XML_PATH}")
+    adb.shell_su(f"mv {source_packages_path} {PACKAGES_XML_PATH}")
+    adb.shell_su(f"mv {source_warnings_path} {PACKAGES_WARNINGS_XML_PATH}")
     adb.shell_su(
         f"chown system:system {PACKAGES_XML_PATH} {PACKAGES_WARNINGS_XML_PATH}")
     adb.shell_su(f"chmod 640 {PACKAGES_XML_PATH} {PACKAGES_WARNINGS_XML_PATH}")
     adb.shell_su(
         f"restorecon {PACKAGES_XML_PATH} {PACKAGES_WARNINGS_XML_PATH}")
+
+    # Clean up the original XML files from /data/local/tmp
+    adb.shell_su(f"rm -f {tmp_xml_packages} {tmp_xml_warnings}")
 
     logger.info(
         f"{Colors.GREEN}Successfully patched package database.{Colors.ENDC}")
