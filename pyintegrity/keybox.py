@@ -9,7 +9,7 @@ import tempfile
 from cryptography import x509
 import xml.etree.ElementTree as ET
 import importlib.resources
-from . import adb, utils
+from . import adb, utils, keybox_extend
 from .constants import *
 from .utils import Colors
 
@@ -87,6 +87,9 @@ def setup_keybox_parser(parser):
         '--remote', action='store_true', help='Delete from the device.')
     parser_delete.add_argument('--force', '-f', action='store_true',
                                help='Bypass confirmation and delete immediately.')
+
+    keybox_extend.setup_extend_parser(subparsers)
+
     parser_delete.set_defaults(func=handle_delete)
 
 
